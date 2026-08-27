@@ -15,6 +15,7 @@ from langchain_core.messages import (
     HumanMessage,
     SystemMessage,
     ToolMessage,
+    ToolCall
 )
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
@@ -132,7 +133,7 @@ def _load_tool_function(
     if not tool_path.is_file():
         raise ValueError(f"registered tool file does not exist: {tool_name}.py")
 
-    module_name = f"_self_learning_tool_{tool_name}"
+    module_name = f"_agent_tool_{tool_name}"
     spec = importlib.util.spec_from_file_location(module_name, tool_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"unable to load tool module: {tool_name}")
@@ -249,12 +250,12 @@ def _call_tool_function(
     return tool_function(*positional_args, **keyword_args)
 
 
-def _invoke_tool(tool_name: str, tool_args: dict[str, object]) -> object:
+async def _invoke_tool(tool_name: str, tool_args: dict[str, object]) -> object:
     tools = _load_tools_registry()
     tool_function = _load_tool_function(tool_name, tools)
     result = _call_tool_function(tool_function, tool_args)
     if inspect.isawaitable(result):
-        return asyncio.run(result)
+        return await result
     return result
 
 
@@ -265,7 +266,7 @@ def _execute_tool_call(tool_call: dict[str, object]) -> dict[str, object]:
         raise ValueError("invalid parsed tool call")
 
     try:
-        result = _invoke_tool(tool_name, tool_args)
+        result = asyncio.run(_invoke_tool(tool_name, tool_args))
     except Exception as error:
         return {
             "type": "tool_result",
@@ -289,7 +290,7 @@ def _serialize_tool_result(result: dict[str, object]) -> str:
     return json.dumps(result, ensure_ascii=False, default=repr)
 
 
-def _create_tool_message(tool_call: dict[str, object]) -> ToolMessage:
+def _create_tool_message(tool_call: ToolCall) -> ToolMessage:
     tool_call_id = tool_call.get("id")
     tool_name = tool_call.get("name")
     tool_args = tool_call.get("args")
@@ -358,7 +359,7 @@ def run_agent(
         tools = _load_tools_registry()
         tool_enabled_llm = llm.bind_tools(
             tools,
-            strict=False,
+            strict=True,
             parallel_tool_calls=False,
         )
         response = tool_enabled_llm.invoke(messages)
