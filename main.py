@@ -412,6 +412,9 @@ def run_agent(
         if not isinstance(response, AIMessage):
             raise RuntimeError("chat model did not return an AIMessage")
         messages.append(response)
+        response_text = response.text.strip()
+        if response_text:
+            print(response_text)
 
         if response.tool_calls or response.invalid_tool_calls:
             messages.extend(
@@ -424,9 +427,8 @@ def run_agent(
             )
             continue
 
-        final_answer = response.text.strip()
-        if final_answer:
-            return final_answer
+        if response_text:
+            return response_text
         raise RuntimeError("chat model returned neither a tool call nor an answer")
 
     raise RuntimeError(
@@ -458,7 +460,7 @@ def main() -> None:
         api_key=SecretStr(api_key),
     )
 
-    print(run_agent(query, llm))
+    _ = run_agent(query, llm)
 
 
 if __name__ == "__main__":
