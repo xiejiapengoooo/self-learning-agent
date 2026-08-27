@@ -5,7 +5,7 @@
 本规范只约束 `create_tool.args.code` 中的 Python 代码，不改变上层要求的响应格式。最终响应仍需遵循调用方要求，例如：
 
 ```json
-{"tool":"create_tool","args":{"code":"完整的 Python 源代码"}}
+{"tools": [{"create_tool","args":{"code":"完整的 Python 源代码"}}]}
 ```
 
 ## 必须满足的要求
@@ -92,7 +92,7 @@ def calculate_average(numbers: list[float]) -> float:
 当上层要求返回工具调用 JSON 时，应将完整源码正确转义后放入 `args.code`，不要把 Markdown 代码围栏放入 `code`：
 
 ```json
-{"tool":"create_tool","args":{"code":"def calculate_average(numbers: list[float]) -> float:\n    \"\"\"计算一组数字的平均值。\"\"\"\n    if not numbers:\n        raise ValueError(\"numbers cannot be empty\")\n    return sum(numbers) / len(numbers)\n"}}
+{"tools": [{"tool":"create_tool","args":{"code":"def calculate_average(numbers: list[float]) -> float:\n    \"\"\"计算一组数字的平均值。\"\"\"\n    if not numbers:\n        raise ValueError(\"numbers cannot be empty\")\n    return sum(numbers) / len(numbers)\n"}}]}
 ```
 
 生成完成后，在返回结果前自行检查：Python 语法正确、公开顶层函数数量为一个、函数名不冲突、docstring 存在、所有输入参数都有清晰的类型注解。
