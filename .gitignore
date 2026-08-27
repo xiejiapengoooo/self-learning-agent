@@ -9,3 +9,7 @@ wheels/
 # Virtual environments
 .venv
 .env
+tools/*
+!tools/create_tool.py
+!tools/tools.json
+!tools/tools.md
