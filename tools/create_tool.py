@@ -11,7 +11,7 @@ TOOLS_REGISTRY_PATH = TOOLS_DIR / "tools.json"
 
 def _get_json_type(annotation: ast.expr | None) -> str:
     if annotation is None:
-        return "any"
+        raise ValueError("all public function parameters must have type annotations")
 
     annotation_name = ast.unparse(annotation)
     base_name = annotation_name.rsplit(".", 1)[-1]
@@ -28,9 +28,13 @@ def _get_json_type(annotation: ast.expr | None) -> str:
 
     if isinstance(annotation, ast.Subscript):
         container_name = ast.unparse(annotation.value).rsplit(".", 1)[-1]
-        return type_mapping.get(container_name, annotation_name)
+        if container_name not in type_mapping:
+            raise ValueError(f"unsupported parameter annotation: {annotation_name}")
+        return type_mapping[container_name]
 
-    return type_mapping.get(base_name, annotation_name)
+    if base_name not in type_mapping:
+        raise ValueError(f"unsupported parameter annotation: {annotation_name}")
+    return type_mapping[base_name]
 
 
 def _get_function_args(
@@ -137,8 +141,17 @@ def _validate_registry(
         }
 
     return {
-        "description": tool_description.strip(),
-        "args": normalized_args,
+        "type": "function",
+        "function": {
+            "name": tool_function.name,
+            "description": tool_description.strip(),
+            "parameters": {
+                "type": "object",
+                "properties": normalized_args,
+                "required": list(normalized_args),
+                "additionalProperties": False,
+            },
+        },
     }
 
 
@@ -189,12 +202,29 @@ def create_tool(code: str, registry: dict[str, object]) -> None:
         tools_registry = json.loads(TOOLS_REGISTRY_PATH.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise ValueError("tools.json is missing or invalid") from error
-    if not isinstance(tools_registry, dict):
-        raise ValueError("tools.json must contain a JSON object")
-    if tool_path.exists() or tool_name in tools_registry:
+    if not isinstance(tools_registry, list):
+        raise ValueError("tools.json must contain a JSON array")
+
+    registered_tool_names = set()
+    for index, tool_definition in enumerate(tools_registry):
+        if not isinstance(tool_definition, dict):
+            raise ValueError(f"tools[{index}] must be an object")
+        function = tool_definition.get("function")
+        if (
+            tool_definition.get("type") != "function"
+            or not isinstance(function, dict)
+            or not isinstance(function.get("name"), str)
+        ):
+            raise ValueError(f"tools[{index}] is not a valid function tool")
+        registered_tool_name = function["name"]
+        if registered_tool_name in registered_tool_names:
+            raise ValueError(f"duplicate tool name in tools.json: {registered_tool_name}")
+        registered_tool_names.add(registered_tool_name)
+
+    if tool_path.exists() or tool_name in registered_tool_names:
         raise ValueError(f"tool already exists: {tool_name}")
 
-    tools_registry[tool_name] = tool_registry
+    tools_registry.append(tool_registry)
 
     _write_text_atomically(tool_path, code)
     try:
