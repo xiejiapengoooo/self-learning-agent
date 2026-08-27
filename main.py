@@ -26,6 +26,7 @@ from pydantic import SecretStr
 
 BASE_DIR = Path(__file__).resolve().parent
 TOOLS_DIR = BASE_DIR / "tools"
+BASE_TOOLS_REGISTRY_PATH = TOOLS_DIR / "base_tools.json"
 TOOLS_REGISTRY_PATH = TOOLS_DIR / "tools.json"
 TOOLS_RULES_PATH = TOOLS_DIR / "tools.md"
 MAX_AGENT_ITERATIONS = 8
@@ -121,15 +122,19 @@ SYSTEM_PROMPT = """# 角色
 
 
 def _load_tools_registry() -> list[dict[str, object]]:
-    try:
-        tools = json.loads(TOOLS_REGISTRY_PATH.read_text(encoding="utf-8"))
-    except OSError as error:
-        raise RuntimeError("unable to read tools/tools.json") from error
-    except json.JSONDecodeError as error:
-        raise RuntimeError("tools/tools.json is not valid JSON") from error
+    tools = []
+    for registry_path in (BASE_TOOLS_REGISTRY_PATH, TOOLS_REGISTRY_PATH):
+        registry_name = f"tools/{registry_path.name}"
+        try:
+            registry_tools = json.loads(registry_path.read_text(encoding="utf-8"))
+        except OSError as error:
+            raise RuntimeError(f"unable to read {registry_name}") from error
+        except json.JSONDecodeError as error:
+            raise RuntimeError(f"{registry_name} is not valid JSON") from error
 
-    if not isinstance(tools, list):
-        raise RuntimeError("tools/tools.json must contain a JSON array")
+        if not isinstance(registry_tools, list):
+            raise RuntimeError(f"{registry_name} must contain a JSON array")
+        tools.extend(registry_tools)
 
     tool_names = set()
     for index, tool_definition in enumerate(tools):
@@ -152,7 +157,7 @@ def _load_tools_registry() -> list[dict[str, object]]:
         ):
             raise RuntimeError(f"tools[{index}] has an invalid function name")
         if tool_name in tool_names:
-            raise RuntimeError(f"duplicate tool name in tools.json: {tool_name}")
+            raise RuntimeError(f"duplicate tool name in tool registries: {tool_name}")
         if not isinstance(description, str) or not description.strip():
             raise RuntimeError(f"tool description must be non-empty: {tool_name}")
         if not isinstance(parameters, dict) or parameters.get("type") != "object":

@@ -11,5 +11,5 @@ wheels/
 .env
 tools/*
 !tools/create_tool.py
-!tools/tools.json
+!tools/base_tools.json
 !tools/tools.md
