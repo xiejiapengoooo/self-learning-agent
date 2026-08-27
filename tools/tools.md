@@ -1,12 +1,8 @@
 # 工具代码生成规范
 
-当现有工具无法完成用户任务、需要调用 `create_tool` 创建新工具时，必须按照以下规范生成 `args.code` 和 `args.registry`。
+当现有工具无法完成用户任务、需要调用 `create_tool` 创建新工具时，必须通过模型原生 Tool Calling 传入 `code` 和 `registry`。
 
-本规范约束 `create_tool` 的 Python 代码和注册信息，不改变上层要求的响应格式。最终响应仍需遵循调用方要求，例如：
-
-```json
-{"tools": [{"tool":"create_tool","args":{"code":"完整的 Python 源代码","registry":{"tool_name":"工具函数名","tool_description":"工具说明","args":{"参数名":{"type":"注册类型","description":"参数说明"}}}}}]}
-```
+本规范只约束 `create_tool` 的 Python 代码和注册信息。不要在文本中模拟工具调用，参数结构以 `create_tool` 的 tool schema 为准。
 
 ## 必须满足的要求
 
@@ -51,23 +47,23 @@
 | `tuple`、`tuple[T, ...]` | `array` |
 | `set`、`set[T]` | `array` |
 | `dict`、`dict[K, V]` | `object` |
-| 未提供注解 | `any` |
-| 其他注解 | 注解的原始文本 |
+| 未提供注解 | 创建失败 |
+| 其他注解 | 创建失败 |
 
 生成代码时应遵循以下原则：
 
 - 优先使用 `str`、`int`、`float`、`bool`、`list[T]` 和 `dict[K, V]`。
-- 除非业务确实需要，否则不要使用 `Any`、`Union`、`Optional`、`Literal`、自定义类或复杂嵌套类型。这些类型不会被转换成标准注册类型，而是以原始注解文本写入注册表。
-- 可以设置参数默认值，但默认值和参数是否必填不会写入 `tools.json`，因此不要依赖注册表表达默认值语义。
+- 不要使用 `Any`、`Union`、`Optional`、`Literal`、自定义类或复杂嵌套类型，这些注解无法转换成当前支持的 JSON Schema 类型，工具创建会失败。
+- 不要依赖参数默认值。默认值不会写入 `tools.json`，所有公开函数参数都会加入 `parameters.required`。
 - 尽量避免 `*args` 和 `**kwargs`。如果使用，前者会注册为 `array`，后者会注册为 `object`。
 - 不要把公开工具函数设计成实例方法。名为 `self` 或 `cls` 的参数不会注册到工具参数列表。
 - 容器元素类型不会单独写入注册表。例如 `list[float]` 只会注册为 `array`。
 
 ## 描述信息
 
-- `registry.tool_name` 会同时作为工具文件名和 `tools.json` 的注册键，例如 `fetch_page` 会生成 `fetch_page.py`。
-- `registry.tool_description` 会成为工具的 `description`，必须描述工具做什么，而不是描述实现过程。
-- `registry.args` 中每个参数的 `description` 会直接写入 `tools.json`，必须清晰描述参数的含义和用途。
+- `registry.tool_name` 会成为工具文件名和 `function.name`，例如 `fetch_page` 会生成 `fetch_page.py`。
+- `registry.tool_description` 会成为 `function.description`，必须描述工具做什么，而不是描述实现过程。
+- `registry.args` 会成为 `function.parameters.properties`，每个参数的 `description` 必须清晰描述其含义和用途。
 - 函数 docstring 用于保持生成代码本身可读，其内容应与 `registry.tool_description` 语义一致。
 
 ## 推荐代码结构
@@ -97,12 +93,12 @@ def calculate_average(numbers: list[float]) -> float:
 - docstring 与注册信息中的工具说明保持一致。
 - 没有模块导入阶段的副作用。
 
-## 响应示例
+## Tool Calling 参数示例
 
-当上层要求返回工具调用 JSON 时，应将完整源码正确转义后放入 `args.code`，不要把 Markdown 代码围栏放入 `code`：
+调用 `create_tool` 时，应将完整源码作为 `code` 参数传入，不要包含 Markdown 代码围栏：
 
 ```json
-{"tools": [{"tool":"create_tool","args":{"code":"def calculate_average(numbers: list[float]) -> float:\n    \"\"\"计算一组数字的平均值。\"\"\"\n    if not numbers:\n        raise ValueError(\"numbers cannot be empty\")\n    return sum(numbers) / len(numbers)\n","registry":{"tool_name":"calculate_average","tool_description":"计算一组数字的平均值。","args":{"numbers":{"type":"array","description":"需要计算平均值的数字列表"}}}}}]}
+{"code":"def calculate_average(numbers: list[float]) -> float:\n    \"\"\"计算一组数字的平均值。\"\"\"\n    if not numbers:\n        raise ValueError(\"numbers cannot be empty\")\n    return sum(numbers) / len(numbers)\n","registry":{"tool_name":"calculate_average","tool_description":"计算一组数字的平均值。","args":{"numbers":{"type":"array","description":"需要计算平均值的数字列表"}}}}
 ```
 
 生成完成后，在返回结果前自行检查：Python 语法正确、公开顶层函数数量为一个、函数名不冲突、docstring 存在、所有输入参数都有清晰的类型注解，并且 `registry` 中的工具名、参数名和参数类型与代码完全一致。
