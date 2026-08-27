@@ -1,11 +1,52 @@
 {
   "create_tool": {
-    "name": "工具创建",
-    "description": "输入代码片段后，会创建一个工具文件，写入代码片段，同时注册到tools.json。",
+    "description": "输入工具代码和注册信息后，校验并创建工具文件，同时注册到tools.json",
     "args": {
       "code": {
         "type": "string",
         "description": "代码片段"
+      },
+      "registry": {
+        "type": "object",
+        "description": "工具注册信息，必须与代码中的公开函数签名一致",
+        "properties": {
+          "tool_name": {
+            "type": "string",
+            "description": "工具名称，必须与代码中的公开函数名一致，也是工具文件名"
+          },
+          "tool_description": {
+            "type": "string",
+            "description": "工具功能说明"
+          },
+          "args": {
+            "type": "object",
+            "description": "工具参数注册信息，key 必须与函数参数名一致",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "description": "参数类型，必须与函数类型注解的注册类型一致"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "参数的含义和用途"
+                }
+              },
+              "required": [
+                "type",
+                "description"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "tool_name",
+          "tool_description",
+          "args"
+        ],
+        "additionalProperties": false
       }
     }
   }
