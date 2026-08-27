@@ -460,7 +460,11 @@ def main() -> None:
         api_key=SecretStr(api_key),
     )
 
-    _ = run_agent(query, llm)
+    while True:
+        if query:
+            _ = run_agent(query, llm)
+            query = ""
+        query = input("请输入问题：").strip()
 
 
 if __name__ == "__main__":
