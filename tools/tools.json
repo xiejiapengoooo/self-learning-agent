@@ -1,0 +1,12 @@
+{
+  "create_tool": {
+    "name": "工具创建",
+    "description": "输入代码片段后，会创建一个工具文件，写入代码片段，同时注册到tools.json。",
+    "args": {
+      "code": {
+        "type": "string",
+        "description": "代码片段"
+      }
+    }
+  }
+}
