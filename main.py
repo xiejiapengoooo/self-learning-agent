@@ -17,7 +17,8 @@ from langchain_core.messages import (
     HumanMessage,
     SystemMessage,
     ToolMessage,
-    ToolCall
+    ToolCall,
+    InvalidToolCall
 )
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
@@ -358,7 +359,7 @@ def _create_tool_message(tool_call: ToolCall) -> ToolMessage:
     )
 
 
-def _create_invalid_tool_message(tool_call: dict[str, object]) -> ToolMessage:
+def _create_invalid_tool_message(tool_call: InvalidToolCall) -> ToolMessage:
     tool_call_id = tool_call.get("id")
     tool_name = tool_call.get("name")
     if not isinstance(tool_call_id, str) or not tool_call_id:
