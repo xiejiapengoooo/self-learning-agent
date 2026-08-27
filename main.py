@@ -5,7 +5,9 @@ import json
 import os
 import sys
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
+from typing import ClassVar, Literal, Self
 
 from dotenv import load_dotenv
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -26,6 +28,61 @@ TOOLS_DIR = BASE_DIR / "tools"
 TOOLS_REGISTRY_PATH = TOOLS_DIR / "tools.json"
 TOOLS_RULES_PATH = TOOLS_DIR / "tools.md"
 MAX_AGENT_ITERATIONS = 8
+_MISSING = object()
+
+
+@dataclass(frozen=True, slots=True)
+class ToolResult:
+    type: ClassVar[Literal["tool_result"]] = "tool_result"
+
+    status: Literal["success", "error"]
+    tool: object = _MISSING
+    args: object = _MISSING
+    result: object = _MISSING
+    error_type: object = _MISSING
+    error: object = _MISSING
+
+    @classmethod
+    def success(
+        cls,
+        tool: str,
+        args: dict[str, object],
+        result: object,
+    ) -> Self:
+        return cls(status="success", tool=tool, args=args, result=result)
+
+    @classmethod
+    def failure(
+        cls,
+        error_type: str,
+        error: object,
+        tool: object = _MISSING,
+        args: object = _MISSING,
+    ) -> Self:
+        return cls(
+            status="error",
+            tool=tool,
+            args=args,
+            error_type=error_type,
+            error=error,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        data: dict[str, object] = {"type": self.type}
+        for field_name in ("tool", "args"):
+            value = getattr(self, field_name)
+            if value is not _MISSING:
+                data[field_name] = value
+
+        data["status"] = self.status
+        for field_name in ("result", "error_type", "error"):
+            value = getattr(self, field_name)
+            if value is not _MISSING:
+                data[field_name] = value
+        return data
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), ensure_ascii=False, default=repr)
 
 
 SYSTEM_PROMPT = """# 角色
@@ -259,7 +316,7 @@ async def _invoke_tool(tool_name: str, tool_args: dict[str, object]) -> object:
     return result
 
 
-def _execute_tool_call(tool_call: dict[str, object]) -> dict[str, object]:
+def _execute_tool_call(tool_call: dict[str, object]) -> ToolResult:
     tool_name = tool_call["tool"]
     tool_args = tool_call["args"]
     if not isinstance(tool_name, str) or not isinstance(tool_args, dict):
@@ -268,26 +325,14 @@ def _execute_tool_call(tool_call: dict[str, object]) -> dict[str, object]:
     try:
         result = asyncio.run(_invoke_tool(tool_name, tool_args))
     except Exception as error:
-        return {
-            "type": "tool_result",
-            "tool": tool_name,
-            "args": tool_args,
-            "status": "error",
-            "error_type": type(error).__name__,
-            "error": str(error),
-        }
+        return ToolResult.failure(
+            type(error).__name__,
+            str(error),
+            tool=tool_name,
+            args=tool_args,
+        )
 
-    return {
-        "type": "tool_result",
-        "tool": tool_name,
-        "args": tool_args,
-        "status": "success",
-        "result": result,
-    }
-
-
-def _serialize_tool_result(result: dict[str, object]) -> str:
-    return json.dumps(result, ensure_ascii=False, default=repr)
+    return ToolResult.success(tool_name, tool_args, result)
 
 
 def _create_tool_message(tool_call: ToolCall) -> ToolMessage:
@@ -298,21 +343,18 @@ def _create_tool_message(tool_call: ToolCall) -> ToolMessage:
         raise RuntimeError("tool call is missing an id")
 
     if not isinstance(tool_name, str) or not isinstance(tool_args, dict):
-        result = {
-            "type": "tool_result",
-            "status": "error",
-            "error_type": "InvalidToolCall",
-            "error": "tool call must contain a valid name and arguments object",
-        }
+        result = ToolResult.failure(
+            "InvalidToolCall",
+            "tool call must contain a valid name and arguments object",
+        )
     else:
         result = _execute_tool_call({"tool": tool_name, "args": tool_args})
 
-    status = "success" if result.get("status") == "success" else "error"
     return ToolMessage(
-        content=_serialize_tool_result(result),
+        content=result.to_json(),
         tool_call_id=tool_call_id,
         name=tool_name if isinstance(tool_name, str) else None,
-        status=status,
+        status=result.status,
     )
 
 
@@ -322,15 +364,13 @@ def _create_invalid_tool_message(tool_call: dict[str, object]) -> ToolMessage:
     if not isinstance(tool_call_id, str) or not tool_call_id:
         raise RuntimeError("invalid tool call is missing an id")
 
-    result = {
-        "type": "tool_result",
-        "tool": tool_name,
-        "status": "error",
-        "error_type": "InvalidToolCall",
-        "error": tool_call.get("error") or "tool arguments are not valid JSON",
-    }
+    result = ToolResult.failure(
+        "InvalidToolCall",
+        tool_call.get("error") or "tool arguments are not valid JSON",
+        tool=tool_name,
+    )
     return ToolMessage(
-        content=_serialize_tool_result(result),
+        content=result.to_json(),
         tool_call_id=tool_call_id,
         name=tool_name if isinstance(tool_name, str) else None,
         status="error",
